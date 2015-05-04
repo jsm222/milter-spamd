@@ -1,0 +1,149 @@
+.\" $Id: milter-spamd.8,v 1.1.1.1 2007/01/11 15:53:57 dhartmei Exp $ */
+.\"
+.\" Copyright (c) 2004-2006 Daniel Hartmeier
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\"
+.\"    - Redistributions of source code must retain the above copyright
+.\"      notice, this list of conditions and the following disclaimer. 
+.\"    - Redistributions in binary form must reproduce the above
+.\"      copyright notice, this list of conditions and the following
+.\"      disclaimer in the documentation and/or other materials provided
+.\"      with the distribution. 
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+.\" "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+.\" LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+.\" FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
+.\" COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+.\" INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+.\" BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+.\" LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+.\" CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
+.\" ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+.\" POSSIBILITY OF SUCH DAMAGE.
+.\"
+.Dd September 24, 2003
+.Dt MILTER-SPAMD 8
+.Os
+.Sh NAME
+.Nm milter-spamd
+.Nd sendmail milter plugin for SpamAssassin spamd
+.Sh SYNOPSIS
+.Nm
+.Op Fl d
+.Op Fl i Ar RE
+.Op Fl p Ar pipe
+.Op Fl u Ar user
+.Op Fl U Ar spamd-user
+.Sh DESCRIPTION
+The
+.Nm
+plugin can be used with the milter API of
+.Xr sendmail 8
+to filter mails based on decisions from SpamAssassin's
+.Xr spamd 1
+daemon.
+Mails are piped to the daemon, which decides whether a mail is
+spam or not according to its own configuration.
+Spam mails are rejected with an SMTP 554 ("Transaction failed")
+reply, containing the score from spamd.
+This typically causes the remote MTA to generate a bounce
+message to the sender.
+Non-spam mails are accepted without any modifications.
+.Pp
+The options are as follows:
+.Bl -tag -width "-c config"
+.It Fl d
+Do not detach from controlling terminal.
+Produce verbose output on stdout for debugging.
+.It Fl i Ar RE
+Accept mails without invoking spamd for peers whose host names
+or IP addresses match the specified regular expression.
+The argument is a case-insensitive extended regular expression
+(like an argument of
+.Xr egrep 1
+-i).
+Example:
+.Bd -literal -offset indent
+# milter-spamd -i '(^127\\.|^10\\.1\\.|\\.benzedrine\\.cx$)'
+.Ed
+.Pp
+would skip filtering for senders whose host names end
+in .benzedrine.cx or whose IP addresses start with 127. or
+10.1.
+.It Fl p Ar pipe
+Use the specified pipe to interface
+.Xr sendmail 8 .
+Default is unix:/var/spool/milter-spamd/sock.
+.It Fl u Ar user
+Run as the specified user instead of the default, _milter-spamd.
+When
+.Nm
+is started as root, it calls
+.Xr setuid 2
+to drop privileges.
+The non-privileged user should have read access to the configuration
+file and read-write access to the pipe.
+.It Fl U Ar spamd-user
+Pass the specified user to spamd, so that user's SpamAssassin
+settings are used instead of the default system-wide ones.
+.El
+.Pp
+.Sh SENDMAIL CONFIGURATION
+The plugin needs to be registered in the
+.Xr sendmail 8
+configuration, by adding the following lines to the .mc file
+.Bd -literal -offset indent
+INPUT_MAIL_FILTER(`milter-spamd',
+	`S=unix:/var/spool/milter-spamd/sock, T=S:30s;R:2m')
+.Ed
+.Pp
+rebuilding /etc/mail/sendmail.cf from the .mc file using
+.Xr m4 1 ,
+and restarting
+.Xr sendmail 8 .
+.Pp
+.Sh LOGGING
+.Nm
+sends log messages to
+.Xr syslogd 8
+using
+.Em facility
+daemon and, with increasing verbosity,
+.Em level
+err, notice, info and debug.
+The following
+.Xr syslog.conf 5
+section can be used to log messages to a dedicated file:
+.Bd -literal
+!milter-spamd
+daemon.err;daemon.notice	/var/log/milter-spamd
+.Ed
+.Sh SEE ALSO
+.Xr egrep 1 ,
+.Xr mailstats 1 ,
+.Xr regex 3 ,
+.Xr syslog.conf 5 ,
+.Xr re_format 7 ,
+.Xr sendmail 8 ,
+.Xr syslogd 8
+.Rs
+.%T Simple Mail Transfer Protocol
+.%O RFC 2821
+.Re
+.Rs
+.%T Enhanced Mail System Status Codes
+.%O RFC 1893
+.Re
+.Sh HISTORY
+The first version of
+.Nm
+was written in 2004.
+.Sh AUTHORS
+Daniel Hartmeier
+.Aq daniel@benzedrine.cx
