@@ -94,6 +94,7 @@ static void		 msg(int, struct context *, const char *, ...);
 #define	SPAMD_ADDR	"127.0.0.1"
 #define	SPAMD_PORT	783
 
+#define	REJECT_SPAM_LEVEL 50.00
 #define	ST_MTIME st_mtimespec
 
 static int
@@ -479,7 +480,7 @@ done:
 	}
 	/* either way, we don't want to continue */
 	if (action == SMFIS_CONTINUE)
-		action = context->spam ? SMFIS_REJECT : SMFIS_ACCEPT;
+		action = (context->spam && context->score > REJECT_SPAM_LEVEL) ? SMFIS_REJECT : SMFIS_ACCEPT;
 	msg(action == SMFIS_REJECT ? LOG_NOTICE : LOG_INFO, context,
 	    "%s (%s %.1f/%.1f%s%s), From: %s, To: %s, Subject: %s",
 	    (action == SMFIS_REJECT ? "REJECT" : "ACCEPT"),
@@ -490,24 +491,43 @@ done:
 		char m[1024];
 
 		snprintf(m, sizeof(m), "Spam (score %.1f)", context->score);
-		if (smfi_setreply(ctx, RCODE_REJECT, XCODE_REJECT, m) !=
+               if (smfi_setreply(ctx, RCODE_REJECT, XCODE_REJECT, m) !=
 		    MI_SUCCESS)
 			msg(LOG_ERR, context, "smfi_setreply");
 	} else {
-		char m[1024];
-
-		snprintf(m, sizeof(m), "%s (%.1f/%.1f%s%s)",
-		    (context->spam ? "SPAM" : "ham"),
-		    context->score, context->threshold,
+	 char m[1024];
+		int j=0;
+		int starcnt = (int)context->score;
+		const char *star = "*";
+		char stars[1024];
+		stars[0]='\0';
+		snprintf(m, sizeof(m), "%s, %s%.1f %s%.1f%s%s",
+		    (context->spam ? "Yes" : "No"),"score=",
+		    context->score, "required=",context->threshold,
 		    (context->symbols[0] ? " " :  ""), context->symbols);
-		if (smfi_addheader(ctx, "X-milter-spamd", m) != MI_SUCCESS)
-			msg(LOG_ERR, context, "smfi_addheader");
-	}
-	context->pos = context->hdr_from[0] = context->hdr_to[0] =
-	    context->hdr_subject[0] = context->state = context->spam =
-	    context->symbols[0] = 0;
-	context->score = context->threshold = 0.0;
-	return (action);
+
+                if (smfi_addheader(ctx, "X-Spam-Flag", context->spam ? "YES" : "NO") != MI_SUCCESS) {
+		      msg(LOG_ERR, context, "smfi_addheader");
+        }
+
+        if (smfi_addheader(ctx, "X-Spam-Status", m) != MI_SUCCESS) {
+            msg(LOG_ERR, context, "smfi_addheader");
+        }
+
+        for (j = 0; j < starcnt; j++) {
+            strlcat(stars, star, sizeof (stars));
+        }
+        if (smfi_addheader(ctx, "X-Spam-Level", stars) != MI_SUCCESS) {
+            msg(LOG_ERR, context, "smfi_addheader");
+        }
+
+
+    }
+    context->pos = context->hdr_from[0] = context->hdr_to[0] =
+            context->hdr_subject[0] = context->state = context->spam =
+            context->symbols[0] = 0;
+    context->score = context->threshold = 0.0;
+    return (action);
 }
 
 static sfsistat
